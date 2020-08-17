@@ -114,8 +114,8 @@
     </div>
     <script>
       const urlSearchParams = new URLSearchParams(window.location.search);
-      const gitLabApiUrl = urlSearchParams.get('gitLabApiUrl');
-      const gitLabToken = urlSearchParams.get('gitLabToken');
+      const gitLabApiUrl = urlSearchParams.get("gitLabApiUrl");
+      const gitLabToken = urlSearchParams.get("gitLabToken");
       const gitLabClient = axios.create({
         baseURL: gitLabApiUrl,
         headers: {
@@ -123,19 +123,28 @@
         },
         method: "get"
       });
-      const group = urlSearchParams.get('group');
-      document.title = `${group} commits ${urlSearchParams.get("search") ? ' for '+urlSearchParams.get("search") : ''}`
+      const group = urlSearchParams.get("group");
+      document.title = `${group} commits ${
+        urlSearchParams.get("search")
+          ? " for " + urlSearchParams.get("search")
+          : ""
+      }`;
 
       async function getProjectCommitsOnePage(projectId, page, search, all) {
-        return (
+        const allCommits = (
           await gitLabClient.get(
             `/projects/${projectId}/repository/commits?per_page=100&page=${page}&${
               all ? "all=true" : ""
             }`
           )
-        ).data.filter(commit => {
-          return commit.message.match(new RegExp(search));
-        });
+        ).data;
+
+        return {
+          page: allCommits.filter(commit => {
+            return commit.message.match(new RegExp(search));
+          }),
+          isEnd: allCommits.length === 0
+        };
       }
 
       async function refresh() {
@@ -149,25 +158,27 @@
         for (const project of this.projects) {
           let projectCommits = [];
           if (this.searchAll && this.search) {
-            let lastPage = [];
             let page = 1;
+            let res = { isEnd: false, page: [] };
             do {
-              lastPage = await getProjectCommitsOnePage(
+              res = await getProjectCommitsOnePage(
                 project.id,
                 page,
                 this.search,
                 this.allCommits
               );
-              projectCommits.push(...lastPage);
+              projectCommits.push(...res.page);
               page++;
-            } while (lastPage.length);
+            } while (!res.isEnd);
           } else {
-            projectCommits = await getProjectCommitsOnePage(
-              project.id,
-              1,
-              this.search,
-              this.allCommits
-            );
+            projectCommits = (
+              await getProjectCommitsOnePage(
+                project.id,
+                1,
+                this.search,
+                this.allCommits
+              )
+            ).page;
           }
           for (const projectCommit of projectCommits) {
             projectCommit.project = project;
@@ -234,7 +245,7 @@
               for (const commit of this.commits) {
                 const refs = (
                   await gitLabClient.get(
-                    `projects/${commit.project.id}/repository/commits/${commit.id}/refs`
+                    `projects/${commit.project.id}/repository/commits/${commit.id}/refs?per_page=100`
                   )
                 ).data;
                 commit.refs = refs;
