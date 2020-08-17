@@ -1,0 +1,284 @@
+<html>
+  <head>
+    <link
+      rel="stylesheet"
+      href="https://stackpath.bootstrapcdn.com/bootswatch/4.5.2/cyborg/bootstrap.min.css"
+      integrity="sha384-nEnU7Ae+3lD52AK+RGNzgieBWMnEfgTbRHIwEvp1XXPdqdO6uLTd/NwXbzboqjc2"
+      crossorigin="anonymous"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@icon/unicons@2.1.9-alpha.0/unicons.css"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment/min/moment.min.js"></script>
+    <style type="text/css">
+      .badge-pill {
+        margin-left: 1px;
+        margin-right: 1px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <h2>Projets ({{projects.length }}) :</h2>
+      <div>
+        <a
+          v-for="project in projects"
+          :href="project.http_url_to_repo"
+          :title="project.name_with_namespace"
+          target="_blank"
+          class="badge badge-pill badge-light"
+        >
+          {{ project.name}} ({{project.id}})
+        </a>
+      </div>
+      <div v-if="projects.length">
+        <h2>
+          Commits ({{commits.length}}): {{ loading ? '...' : '' }}
+        </h2>
+        <h3>Filtres</h3>
+        <div>
+          Message :
+          <input
+            v-model="search"
+            placeholder="Rechercher dans les messages"
+          /><br />
+          <input type="checkbox" id="checkbox" v-model="searchAll" /> Chercher
+          tout
+          <input type="checkbox" id="checkbox2" v-model="allCommits" /> Tous les
+          commits<br />
+          <button class="btn btn-secondary" v-on:click="refresh()">
+            <i class="uil uil-refresh"></i>
+          </button>
+          <button class="btn btn-secondary" v-on:click="checkMergeRequest()">
+            <i class="uil uil-eye"></i>
+            Find MRs
+          </button>
+          <button class="btn btn-secondary" v-on:click="checkRefs()">
+            <i class="uil uil-code-branch"></i>
+            Find commits refs
+          </button>
+          <button class="btn btn-secondary" v-on:click="cleanNoRefs()">
+            <i class="uil uil-filter"></i>
+            Clean commits without ref
+          </button>
+        </div>
+        <div>
+          Nb repos without MR : {{ nbRepoWithoutMR }}
+        </div>
+        <table>
+          <tr
+            v-for="commit in commits"
+            :class="{ 'font-weight-bold': commit.project.name.includes('api') || commit.project.name.includes('backoffice') }"
+          >
+            <td :title="commit.project.name_with_namespace">
+              <a :href="commit.project.http_url_to_repo" target="_blank">
+                {{ commit.project.name }}
+              </a>
+            </td>
+            <td>{{ commit.short_id }}</td>
+            <td :title="commit.authored_date">
+              {{ commit.authored_date_formatted }}
+            </td>
+            <td>
+              <a :href="commit.web_url" target="_blank">
+                {{ commit.title }}
+              </a>
+            </td>
+            <td>{{ commit.committer_name }}</td>
+            <td>
+              <a
+                v-for="mr in commit.mergeRequests"
+                :href="mr.web_url"
+                :class="{ 'text-secondary': mr.state === 'merged' }"
+                :title="mr.merge_status"
+                style="display:block; text-overflow: ellipsis; overflow: hidden; height: 1em; white-space: nowrap; max-width: 200px; word-break: break-all;"
+              >
+                {{mr.iid}} {{mr.title}}
+              </a>
+            </td>
+            <td>
+              <div
+                v-for="ref in commit.refs"
+                class="badge badge-pill"
+                :class="{ 'badge-danger': ref.type === 'tag', 'badge-success': ref.name === 'develop', 'badge-warning': ref.name === 'master', 'badge-primary': ref.type === 'branch'}"
+              >
+                {{ref.name}}
+              </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+    <script>
+      const urlSearchParams = new URLSearchParams(window.location.search);
+      const gitLabApiUrl = urlSearchParams.get('gitLabApiUrl');
+      const gitLabToken = urlSearchParams.get('gitLabToken');
+      const gitLabClient = axios.create({
+        baseURL: gitLabApiUrl,
+        headers: {
+          "PRIVATE-TOKEN": gitLabToken
+        },
+        method: "get"
+      });
+      const group = urlSearchParams.get('group');
+      document.title = `${group} commits ${urlSearchParams.get("search") ? ' for '+urlSearchParams.get("search") : ''}`
+
+      async function getProjectCommitsOnePage(projectId, page, search, all) {
+        return (
+          await gitLabClient.get(
+            `/projects/${projectId}/repository/commits?per_page=100&page=${page}&${
+              all ? "all=true" : ""
+            }`
+          )
+        ).data.filter(commit => {
+          return commit.message.match(new RegExp(search));
+        });
+      }
+
+      async function refresh() {
+        this.loading = true;
+        // Construct URLSearchParams object instance from current URL querystring.
+        const queryParams = new URLSearchParams(window.location.search);
+        queryParams.set("search", this.search);
+        history.replaceState(null, null, "?" + queryParams.toString());
+
+        this.commits = [];
+        for (const project of this.projects) {
+          let projectCommits = [];
+          if (this.searchAll && this.search) {
+            let lastPage = [];
+            let page = 1;
+            do {
+              lastPage = await getProjectCommitsOnePage(
+                project.id,
+                page,
+                this.search,
+                this.allCommits
+              );
+              projectCommits.push(...lastPage);
+              page++;
+            } while (lastPage.length);
+          } else {
+            projectCommits = await getProjectCommitsOnePage(
+              project.id,
+              1,
+              this.search,
+              this.allCommits
+            );
+          }
+          for (const projectCommit of projectCommits) {
+            projectCommit.project = project;
+            projectCommit.authored_date_formatted = moment(
+              projectCommit.authored_date
+            ).format("DD/MM HH:mm");
+          }
+          this.commits.push(...projectCommits);
+          this.commits.sort((commit1, commit2) => {
+            return commit1.authored_date > commit2.authored_date ? -1 : 1;
+          });
+        }
+        this.loading = false;
+      }
+
+      const app = new Vue({
+        el: "#app",
+        data() {
+          return {
+            search: urlSearchParams.get("search"),
+            searchAll: false,
+            allCommits: true,
+            projects: [],
+            commits: [],
+            loading: false,
+            nbRepoWithoutMR: null
+          };
+        },
+        methods: {
+          refresh,
+          async checkMergeRequest() {
+            if (this.commits.length < 100) {
+              this.loading = true;
+
+              for (const commit of this.commits) {
+                const mergeRequests = (
+                  await gitLabClient.get(
+                    `projects/${commit.project.id}/repository/commits/${commit.id}/merge_requests`
+                  )
+                ).data;
+                commit.mergeRequests = mergeRequests;
+              }
+
+              const repos = {};
+              for (const commit of this.commits) {
+                repos[commit.project.name] = 1;
+              }
+              const nbReposTotal = Object.keys(repos).length;
+              for (const commit of this.commits) {
+                if (commit.mergeRequests.length === 0) {
+                  repos[commit.project.name] = 1;
+                }
+              }
+              this.nbRepoWithoutMR = nbReposTotal - Object.keys(repos).length;
+              this.loading = false;
+            } else {
+              alert("Trop de commits à checker");
+            }
+          },
+          async checkRefs() {
+            if (this.commits.length < 100) {
+              this.loading = true;
+
+              for (const commit of this.commits) {
+                const refs = (
+                  await gitLabClient.get(
+                    `projects/${commit.project.id}/repository/commits/${commit.id}/refs`
+                  )
+                ).data;
+                commit.refs = refs;
+              }
+
+              this.loading = false;
+            } else {
+              alert("Trop de commits à checker");
+            }
+          },
+          async cleanNoRefs() {
+            if (this.commits.length < 100) {
+              this.loading = true;
+
+              // ensure refs
+              for (const commit of this.commits) {
+                commit.refs =
+                  commit.refs ||
+                  (
+                    await gitLabClient.get(
+                      `projects/${commit.project.id}/repository/commits/${commit.id}/refs`
+                    )
+                  ).data;
+              }
+              // clean
+              this.commits = this.commits.filter(
+                commit => commit.refs.length > 0
+              );
+
+              this.loading = false;
+            } else {
+              alert("Trop de commits à checker");
+            }
+          }
+        },
+        async mounted() {
+          this.projects = (
+            await gitLabClient.get(
+              `groups/${group}/projects?order_by=last_activity_at&include_subgroups=true`
+            )
+          ).data;
+          await refresh.call(this);
+        }
+      });
+    </script>
+  </body>
+</html>
