@@ -65,8 +65,8 @@
             Clean commits without ref
           </button>
         </div>
-        <div>
-          Nb repos without MR : {{ nbRepoWithoutMR }}
+        <div v-if="reposWithoutMR">
+          Nb repos without MR : {{ reposWithoutMR.join(', ') }}
         </div>
         <table>
           <tr
@@ -204,7 +204,7 @@
             projects: [],
             commits: [],
             loading: false,
-            nbRepoWithoutMR: null
+            reposWithoutMR: null
           };
         },
         methods: {
@@ -222,17 +222,17 @@
                 commit.mergeRequests = mergeRequests;
               }
 
-              const repos = {};
-              for (const commit of this.commits) {
-                repos[commit.project.name] = 1;
-              }
-              const nbReposTotal = Object.keys(repos).length;
+              const repos = {};;
               for (const commit of this.commits) {
                 if (commit.mergeRequests.length === 0) {
-                  repos[commit.project.name] = 1;
+                  const commitWithMR = this.commits.find((commit1) => commit1.project.name === commit.project.name && commit1.mergeRequests.length !== 0)
+                  if(!commitWithMR) {
+                    repos[commit.project.name] = 0;
+                  }
                 }
               }
-              this.nbRepoWithoutMR = nbReposTotal - Object.keys(repos).length;
+              console.log(`repos`, repos);
+              this.reposWithoutMR = Object.keys(repos);
               this.loading = false;
             } else {
               alert("Trop de commits à checker");
