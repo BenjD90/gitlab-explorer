@@ -78,7 +78,7 @@
           >
             {{ repoWithoutMR.name }}
           </a>
-          <span v-if="reposWithoutMR.length === 0"> Aucun </span>
+          <span v-if="reposWithoutMR.length === 0"> None </span>
         </div>
         <table>
           <tr
@@ -111,7 +111,7 @@
                 :class="{ 'text-secondary': mr.state === 'merged', 'text-warning': mr.work_in_progress, 'text-danger': mr.merge_status === 'cannot_be_merged' }"
                 :title="`${mr.merge_status} ${mr.iid} ${mr.title}`"
               >
-                {{mr.iid}} {{mr.title}}
+                {{mr.iid}} <i v-if="!mr.blocking_discussions_resolved" class="uil uil-comment-alt-exclamation"></i> {{mr.title}}
               </a>
             </td>
             <td class="ellipsis" style="max-width: 200px" :title="commit.refs && commit.refs.map((r) => r.name).join(', ')">
@@ -170,6 +170,7 @@
         history.replaceState(null, null, "?" + queryParams.toString());
 
         this.commits = [];
+        this.reposWithoutMR = [];
         for (const project of this.projects) {
           let projectCommits = [];
           if (this.searchAll && this.search) {
