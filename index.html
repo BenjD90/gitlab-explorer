@@ -18,6 +18,13 @@
         margin-left: 1px;
         margin-right: 1px;
       }
+      .ellipsis {
+        text-overflow: ellipsis;
+        overflow: hidden;
+        height: 1em;
+        white-space: nowrap;
+        word-break: break-all;
+      }
     </style>
   </head>
   <body>
@@ -35,24 +42,21 @@
         </a>
       </div>
       <div v-if="projects.length">
-        <h2>
-          Commits ({{commits.length}}): {{ loading ? '...' : '' }}
-        </h2>
-        <h3>Filtres</h3>
+        <h2>Commits ({{commits.length}}): {{ loading ? '...' : '' }}</h2>
+        <h3>Filters</h3>
         <div>
-          Message :
+          Search in messages :
           <input
             v-model="search"
             placeholder="Rechercher dans les messages"
           /><br />
-          <input type="checkbox" id="checkbox" v-model="searchAll" /> Chercher
-          tout
-          <input type="checkbox" id="checkbox2" v-model="allCommits" /> Tous les
+          <input type="checkbox" id="checkbox" v-model="searchAll" /> Search all
+          <input type="checkbox" id="checkbox2" v-model="allCommits" /> All
           commits<br />
           <button class="btn btn-secondary" v-on:click="refresh()">
             <i class="uil uil-refresh"></i>
           </button>
-          <button class="btn btn-secondary" v-on:click="checkMergeRequest()">
+          <button class="btn btn-primary" v-on:click="checkMergeRequest()">
             <i class="uil uil-eye"></i>
             Find MRs
           </button>
@@ -66,10 +70,15 @@
           </button>
         </div>
         <div v-if="reposWithoutMR">
-          Repos without MR : {{ reposWithoutMR.join(', ') }}
-          <span v-if="reposWithoutMR.length === 0">
-            Aucun
-          </span>
+          Repos without MR :
+          <a
+            v-for="repoWithoutMR in reposWithoutMR"
+            :href="repoWithoutMR.MrUrl"
+            target="_blank"
+          >
+            {{ repoWithoutMR.name }}
+          </a>
+          <span v-if="reposWithoutMR.length === 0"> Aucun </span>
         </div>
         <table>
           <tr
@@ -85,24 +94,27 @@
             <td :title="commit.authored_date">
               {{ commit.authored_date_formatted }}
             </td>
-            <td>
-              <a :href="commit.web_url" target="_blank">
-                {{ commit.title }}
-              </a>
+            <td :title="commit.title" class="ellipsis" style="max-width: 300px">
+              <a :href="commit.web_url" target="_blank"> {{ commit.title }} </a>
             </td>
-            <td>{{ commit.committer_name }}</td>
-            <td>
+            <td
+              :title="commit.committer_name"
+              class="ellipsis"
+              style="max-width: 100px"
+            >
+              {{ commit.committer_name }}
+            </td>
+            <td class="ellipsis" style="max-width: 150px">
               <a
                 v-for="mr in commit.mergeRequests"
                 :href="mr.web_url"
-                :class="{ 'text-secondary': mr.state === 'merged' }"
-                :title="mr.merge_status"
-                style="display:block; text-overflow: ellipsis; overflow: hidden; height: 1em; white-space: nowrap; max-width: 200px; word-break: break-all;"
+                :class="{ 'text-secondary': mr.state === 'merged', 'text-warning': mr.work_in_progress }"
+                :title="`${mr.merge_status} ${mr.iid} ${mr.title}`"
               >
                 {{mr.iid}} {{mr.title}}
               </a>
             </td>
-            <td>
+            <td class="ellipsis" style="max-width: 200px" :title="commit.refs && commit.refs.map((r) => r.name).join(', ')">
               <div
                 v-for="ref in commit.refs"
                 class="badge badge-pill"
@@ -122,9 +134,9 @@
       const gitLabClient = axios.create({
         baseURL: gitLabApiUrl,
         headers: {
-          "PRIVATE-TOKEN": gitLabToken
+          "PRIVATE-TOKEN": gitLabToken,
         },
-        method: "get"
+        method: "get",
       });
       const group = urlSearchParams.get("group");
       document.title = `${group} commits ${
@@ -143,10 +155,10 @@
         ).data;
 
         return {
-          page: allCommits.filter(commit => {
+          page: allCommits.filter((commit) => {
             return commit.message.match(new RegExp(search));
           }),
-          isEnd: allCommits.length === 0
+          isEnd: allCommits.length === 0,
         };
       }
 
@@ -207,7 +219,7 @@
             projects: [],
             commits: [],
             loading: false,
-            reposWithoutMR: null
+            reposWithoutMR: null,
           };
         },
         methods: {
@@ -215,6 +227,7 @@
           async checkMergeRequest() {
             if (this.commits.length < 100) {
               this.loading = true;
+              let gitLabHost;
 
               for (const commit of this.commits) {
                 const mergeRequests = (
@@ -225,17 +238,35 @@
                 commit.mergeRequests = mergeRequests;
               }
 
-              const repos = {};;
+              const repos = {};
               for (const commit of this.commits) {
                 if (commit.mergeRequests.length === 0) {
-                  const commitWithMR = this.commits.find((commit1) => commit1.project.name === commit.project.name && commit1.mergeRequests.length !== 0)
-                  if(!commitWithMR) {
+                  const commitWithMR = this.commits.find(
+                    (commit1) =>
+                      commit1.project.name === commit.project.name &&
+                      commit1.mergeRequests.length !== 0
+                  );
+                  if (!commitWithMR) {
                     repos[commit.project.name] = 0;
                   }
                 }
+
+                if (!gitLabHost) {
+                  const url = new URL(commit.web_url);
+                  gitLabHost = `${url.protocol}//${url.host}`;
+                }
               }
               console.log(`repos`, repos);
-              this.reposWithoutMR = Object.keys(repos);
+              this.reposWithoutMR = Object.keys(repos).map((repoName) => ({
+                name: repoName,
+                MrUrl: [
+                  gitLabHost,
+                  group,
+                  repoName,
+                  "-/merge_requests/new?merge_request%5Bsource_branch%5D=" +
+                    this.search,
+                ].join("/"),
+              }));
               this.loading = false;
             } else {
               alert("Trop de commits à checker");
@@ -275,14 +306,14 @@
               }
               // clean
               this.commits = this.commits.filter(
-                commit => commit.refs.length > 0
+                (commit) => commit.refs.length > 0
               );
 
               this.loading = false;
             } else {
               alert("Trop de commits à checker");
             }
-          }
+          },
         },
         async mounted() {
           this.projects = (
@@ -291,7 +322,7 @@
             )
           ).data;
           await refresh.call(this);
-        }
+        },
       });
     </script>
   </body>
