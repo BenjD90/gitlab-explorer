@@ -226,7 +226,7 @@
         methods: {
           refresh,
           async checkMergeRequest() {
-            if (this.commits.length < 100) {
+            if (this.commits.length < 300) {
               this.loading = true;
               let gitLabHost;
 
@@ -274,7 +274,7 @@
             }
           },
           async checkRefs() {
-            if (this.commits.length < 100) {
+            if (this.commits.length < 300) {
               this.loading = true;
 
               for (const commit of this.commits) {
@@ -292,7 +292,7 @@
             }
           },
           async cleanNoRefs() {
-            if (this.commits.length < 100) {
+            if (this.commits.length < 300) {
               this.loading = true;
 
               // ensure refs
