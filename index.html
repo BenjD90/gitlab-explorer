@@ -104,17 +104,26 @@
             >
               {{ commit.committer_name }}
             </td>
-            <td class="ellipsis" style="max-width: 150px">
+            <td class="ellipsis" style="max-width: 300px">
               <a
                 v-for="mr in commit.mergeRequests"
                 :href="mr.web_url"
                 :class="{ 'text-secondary': mr.state === 'merged', 'text-warning': mr.work_in_progress, 'text-danger': mr.merge_status === 'cannot_be_merged' }"
                 :title="`${mr.merge_status} ${mr.iid} ${mr.title}`"
               >
-                {{mr.iid}} <i v-if="!mr.blocking_discussions_resolved" class="uil uil-comment-alt-exclamation"></i> {{mr.title}}
+                {{mr.iid}}
+                <i
+                  v-if="!mr.blocking_discussions_resolved"
+                  class="uil uil-comment-alt-exclamation"
+                ></i>
+                {{mr.title}} {{mr.merge_status}}
               </a>
             </td>
-            <td class="ellipsis" style="max-width: 200px" :title="commit.refs && commit.refs.map((r) => r.name).join(', ')">
+            <td
+              class="ellipsis"
+              style="max-width: 200px"
+              :title="commit.refs && commit.refs.map((r) => r.name).join(', ')"
+            >
               <div
                 v-for="ref in commit.refs"
                 class="badge badge-pill"
@@ -319,7 +328,7 @@
         async mounted() {
           this.projects = (
             await gitLabClient.get(
-              `groups/${group}/projects?order_by=last_activity_at&include_subgroups=true`
+              `groups/${group}/projects?order_by=last_activity_at&include_subgroups=true&per_page=100`
             )
           ).data;
           await refresh.call(this);
