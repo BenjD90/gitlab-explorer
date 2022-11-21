@@ -13,7 +13,7 @@
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/moment/min/moment.min.js"></script>
-    <style type="text/css">
+    <style>
       .badge-pill {
         margin-left: 1px;
         margin-right: 1px;
@@ -25,23 +25,31 @@
         white-space: nowrap;
         word-break: break-all;
       }
+      table {
+          width: 100%;
+      }
+      .form-control-plaintext {
+		      border-color: #888;
+		      border-width: 1px;
+		      border-radius: 5px;
+      }
     </style>
   </head>
   <body>
     <div id="app">
-      <h2>Projets ({{projects.length }}) :</h2>
-      <div>
-        <a
-          v-for="project in projects"
-          :href="project.http_url_to_repo"
-          :title="project.name_with_namespace"
-          target="_blank"
-          class="badge badge-pill badge-light"
-        >
-          {{ project.name}} ({{project.id}})
-        </a>
-      </div>
-      <div v-if="projects.length">
+	    <div v-if="projects.length">
+	      <h2>Projets ({{projects.length }}) :</h2>
+	      <div>
+	        <a
+	          v-for="project in projects"
+	          :href="project.http_url_to_repo"
+	          :title="project.name_with_namespace"
+	          target="_blank"
+	          class="badge badge-pill badge-light"
+	        >
+	          {{ project.name}} ({{project.id}})
+	        </a>
+	      </div>
         <h2>Commits ({{commits.length}}): {{ loading ? '...' : '' }}</h2>
         <h3>Filters</h3>
         <div>
@@ -135,11 +143,50 @@
           </tr>
         </table>
       </div>
+	    <div>
+		    <div>
+			    <a href="https://github.com/BenjD90/gitlab-explorer" target="_blank">How to use it ?</a>
+		    </div>
+		    <form>
+			    <div class="form-group row">
+				    <label class="col-sm-2 col-form-label">Gitlab API Url</label>
+				    <div class="col-sm-10">
+					    <input v-model="init.gitLabApiUrl"  type="text" class="form-control-plaintext" value="" placeholder="https://gitlab.example.com/api/v4">
+				    </div>
+			    </div>
+			    <div class="form-group row">
+				    <a href="https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html#create-a-personal-access-token" target="_blank" class="col-sm-2 col-form-label">Gitlab Token (read_api scope required)</a>
+				    <div class="col-sm-10">
+					    <input v-model="init.gitLabToken" type="password" class="form-control-plaintext" value="">
+				    </div>
+			    </div>
+			    <div class="form-group row">
+				    <label class="col-sm-2 col-form-label">Gitlab Group</label>
+				    <div class="col-sm-10">
+					    <input v-model="init.group" type="text" class="form-control-plaintext" value="">
+				    </div>
+			    </div>
+		    </form>
+		    <div>
+			    <div class="alert alert-danger" role="alert" v-if="getInitUrlErrorMessage()">
+				    {{ getInitUrlErrorMessage() }}
+			    </div>
+			    <div  v-if="!getInitUrlErrorMessage()">
+				    Url to use : <a :href="getInitUrl()">{{ getInitUrl() }}</a>
+			    </div>
+		    </div>
+	    </div>
     </div>
     <script>
       const urlSearchParams = new URLSearchParams(window.location.search);
       const gitLabApiUrl = urlSearchParams.get("gitLabApiUrl");
+      if(!gitLabApiUrl) {
+        console.error(`Missing gitlab api url`);
+      }
       const gitLabToken = urlSearchParams.get("gitLabToken");
+      if(!gitLabToken) {
+        console.error(`Missing gitlab token`);
+      }
       const gitLabClient = axios.create({
         baseURL: gitLabApiUrl,
         headers: {
@@ -148,11 +195,16 @@
         method: "get",
       });
       const group = urlSearchParams.get("group");
-      document.title = `${group} commits ${
-        urlSearchParams.get("search")
-          ? " for " + urlSearchParams.get("search")
-          : ""
-      }`;
+      if(!group) {
+        console.error(`Missing group to use`);
+        document.title = 'Missing group';
+      } else {
+	      document.title = `${group} commits ${
+	        urlSearchParams.get("search")
+	          ? " for " + urlSearchParams.get("search")
+	          : ""
+	      }`;
+      }
 
       async function getProjectCommitsOnePage(projectId, page, search, all) {
         const allCommits = (
@@ -230,6 +282,11 @@
             commits: [],
             loading: false,
             reposWithoutMR: null,
+	          init: {
+              gitLabApiUrl,
+              gitLabToken,
+              group,
+	          }
           };
         },
         methods: {
@@ -279,7 +336,7 @@
               }));
               this.loading = false;
             } else {
-              alert("Trop de commits à checker");
+              alert("Too many commits to check.");
             }
           },
           async checkRefs() {
@@ -297,7 +354,7 @@
 
               this.loading = false;
             } else {
-              alert("Trop de commits à checker");
+              alert("Too many commits to check.");
             }
           },
           async cleanNoRefs() {
@@ -321,11 +378,28 @@
 
               this.loading = false;
             } else {
-              alert("Trop de commits à checker");
+              alert("Too many commits to check.");
             }
           },
+          getInitUrl() {
+            return `https://benjd90.github.io/gitlab-explorer/?gitLabApiUrl=${encodeURI(this.init.gitLabApiUrl)}&gitLabToken=${encodeURI(this.init.gitLabToken)}&group=${this.init.group}`;
+          },
+          getInitUrlErrorMessage() {
+	          if(!this.init.gitLabApiUrl) {
+	            return `Missing gitlab api url`;
+	          }
+	          if(!this.init.gitLabToken) {
+	            return `Missing gitlab token`;
+	          }
+	          if(!this.init.group) {
+	            return `Missing group`;
+	          }
+          }
         },
         async mounted() {
+          if(!gitLabApiUrl || !gitLabToken || !group) {
+            return;
+          }
           this.projects = (
             await gitLabClient.get(
               `groups/${group}/projects?order_by=last_activity_at&include_subgroups=true&per_page=100`
